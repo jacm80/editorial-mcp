@@ -1,0 +1,55 @@
+import json
+import subprocess
+import sys
+
+
+def run(*args, cwd=None):
+    return subprocess.run(
+        [sys.executable, "-m", "editorial_mcp", *args],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+
+def test_registry_relative_paths_and_explicit_id(library, tmp_path):
+    _, one, two = library
+    registry = tmp_path / "books.json"
+    registry.write_text(json.dumps({"books": {"uno": one.name, "dos": two.name}}))
+    result = run("--library", str(registry), "search", "Chile", "--book-id", "dos", cwd=two)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["total_matching_chunks"] == 1
+
+
+def test_empty_or_invalid_registry_fails(tmp_path):
+    registry = tmp_path / "books.json"
+    for contents in (
+        {"books": {}},
+        {"books": {"Libro Inválido": "."}},
+        {"books": []},
+        {"books": {"uno": 42}},
+    ):
+        registry.write_text(json.dumps(contents))
+        result = run("--library", str(registry), "status")
+        assert result.returncode == 1
+        assert "editorial-mcp:" in result.stderr
+        assert not result.stdout
+
+
+def test_duplicate_ids_fail(library):
+    _, one, _ = library
+    result = run("--book", f"uno={one}", "--book", f"uno={one}", "status")
+    assert result.returncode == 1
+    assert "duplicado" in result.stderr
+
+
+def test_markdown_lint_and_unknown_chapter(library):
+    _, one, _ = library
+    result = run("--book", f"uno={one}", "lint", "4", "--format", "markdown")
+    assert result.returncode == 0
+    assert "# Hallazgos mecánicos" in result.stdout
+    invalid = run("--book", f"uno={one}", "context", "999")
+    assert invalid.returncode == 1
+    assert "Capítulo no encontrado" in invalid.stderr

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "editorial-mcp"
+version = "0.2.0"
+description = "Recuperación local y de solo lectura para un harness editorial"
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.20,<2", "PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+semantic = ["model2vec==0.9.0", "huggingface-hub>=0.34,<2"]
+
+[project.scripts]
+editorial-mcp = "editorial_mcp.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_mcp.py" = ["SIM117"]
