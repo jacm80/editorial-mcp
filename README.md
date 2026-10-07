@@ -30,6 +30,9 @@ Requiere `uv` y Python 3.13 (fijado en `.python-version`; el código admite >=3.
 La primera instalación descarga dependencias; las consultas no envían tus libros
 a ningún proveedor externo ni usan APIs. `uv.lock` fija las versiones.
 
+La autenticación de GitHub es independiente del MCP: un token vencido puede
+impedir el `git push`, pero no afecta las consultas locales del libro.
+
 ```sh
 uv sync --locked --extra semantic --project harness/editorial-mcp
 uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json --semantic prepare-model
