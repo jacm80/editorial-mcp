@@ -9,7 +9,7 @@ Esta app tiene su propio repositorio Git y no vive dentro de ningún libro.
 Los vaults son clientes y fuentes de datos; conservan prosa, biblia, revisión y
 reglas editoriales. La app conserva servidor, registro y cachés regenerables.
 Su historial inicial se extrajo de `terrario/harness/editorial-mcp/` sin importar
-el manuscrito ni el resto del historial del libro. No tiene remoto configurado.
+el manuscrito ni el resto del historial del libro.
 
 ## Qué queda dónde
 
