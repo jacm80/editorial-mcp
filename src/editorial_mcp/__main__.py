@@ -75,7 +75,9 @@ def main() -> None:
             books[name] = Path(path).expanduser().resolve()
         if not books:
             raise ValueError("El registro debe contener al menos un libro")
-        database = args.database or next(iter(books.values())) / ".editorial-cache/index.sqlite3"
+        # El estado pertenece a la aplicación/registro, no al primer libro.
+        cache_root = args.library.expanduser().resolve().parent if args.library else Path.cwd()
+        database = args.database or cache_root / ".editorial-cache/index.sqlite3"
         index = BookIndex(books, database)
         from .semantic import LocalEmbedder
 

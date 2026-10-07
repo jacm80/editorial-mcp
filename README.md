@@ -1,21 +1,27 @@
-# MCP editorial — MVP local
+# editorial-mcp — aplicación compartida
 
 Recuperación económica para el harness existente. No escribe manuscritos ni
 genera prosa. La búsqueda textual y el linter no usan modelos; la búsqueda
 semántica utiliza embeddings locales, sin llamadas a un LLM ni a una API.
 El protocolo es MCP estándar sobre **stdio**, con el SDK oficial de Python.
 
+Esta app tiene su propio repositorio Git y no vive dentro de ningún libro.
+Los vaults son clientes y fuentes de datos; conservan prosa, biblia, revisión y
+reglas editoriales. La app conserva servidor, registro y cachés regenerables.
+Su historial inicial se extrajo de `terrario/harness/editorial-mcp/` sin importar
+el manuscrito ni el resto del historial del libro. No tiene remoto configurado.
+
 ## Qué queda dónde
 
 | Capa | Ubicación | Fuente de verdad |
 |---|---|---|
-| Texto del autor | `01-Manuscrito/` | Markdown + Git |
-| Canon documentado | `00-Biblia/` | Fichas revisadas por el autor |
-| Decisiones e issues | `02-Revision/` | Notas editoriales, no prosa canónica |
-| Agentes/skills existentes | `.claude/` y plugin `taller-editorial` | Se mantienen sincronizados según `CLAUDE.md` |
-| Adaptadores de agentes OpenCode V2 | `.opencode/agents/` | Generados desde `.claude/agents/` |
+| Texto del autor | En cada vault: `01-Manuscrito/` | Markdown + Git del libro |
+| Canon documentado | En cada vault: `00-Biblia/` | Fichas revisadas por el autor |
+| Decisiones e issues | En cada vault: `02-Revision/` | Notas editoriales, no prosa canónica |
+| Agentes/skills existentes | En cada vault: `.claude/`, más el plugin `taller-editorial` | Contrato editorial de cada libro |
+| Adaptadores OpenCode V2 | En cada vault: `.opencode/agents/` | Generados desde sus agentes de `.claude/` |
 | Biblioteca | `books.json` | IDs y rutas explícitas |
-| Consulta MCP | `.mcp.json` / `opencode.json` | Configuración propia de cada cliente |
+| Consulta MCP | En cada vault: `.mcp.json` / `opencode.json` | Cliente del servidor compartido |
 | Índice derivado | `.editorial-cache/index.sqlite3` | Regenerable, ignorado por Git |
 
 OpenCode descubre las skills de `.claude/skills/` por compatibilidad estándar;
@@ -24,7 +30,7 @@ son IDs válidos de proveedor OpenCode: los adaptadores heredan el modelo de la
 sesión. Si quieres fijarlos, configura un modelo disponible por agente en tu
 configuración de usuario. No edites los adaptadores a mano.
 
-## Iniciar desde la raíz del vault
+## Iniciar desde la raíz de esta app
 
 Requiere `uv` y Python 3.13 (fijado en `.python-version`; el código admite >=3.11).
 La primera instalación descarga dependencias; las consultas no envían tus libros
@@ -34,17 +40,27 @@ La autenticación de GitHub es independiente del MCP: un token vencido puede
 impedir el `git push`, pero no afecta las consultas locales del libro.
 
 ```sh
-uv sync --locked --extra semantic --project harness/editorial-mcp
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json --semantic prepare-model
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json --semantic index
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json search "dos mil" --mode literal --book-id terrario
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json context 4 --book-id terrario
+uv sync --locked --extra semantic
+uv run --locked --extra semantic editorial-mcp --library books.json --semantic prepare-model
+uv run --locked --extra semantic editorial-mcp --library books.json --semantic index
+uv run --locked --extra semantic editorial-mcp --library books.json search "dos mil" --mode literal --book-id terrario
+uv run --locked --extra semantic editorial-mcp --library books.json context 4 --book-id terrario
 ```
 
-`opencode.json` registra `editorial` en `mcp.servers`; comprueba con
+En cada vault, `opencode.json` registra `editorial` en `mcp.servers`; comprueba con
 `opencode mcp list` o `/mcps`. Puede requerir reconectar o abrir una sesión nueva.
 Claude Code usa `.mcp.json`; revisa y aprueba el servidor desde `/mcp`.
 No se desactiva ninguna protección ni se aprueban servidores automáticamente.
+
+Para un vault hermano de esta app, el comando de conexión es:
+
+```sh
+uv run --locked --extra semantic --project ../editorial-mcp editorial-mcp --library ../editorial-mcp/books.json --semantic serve
+```
+
+No es necesario copiar el servidor al libro. Mantén la disposición de carpetas
+hermanas o ajusta las rutas de su configuración. Clonar el libro no instala esta
+app automáticamente: son dos proyectos independientes.
 
 ## Registrar los otros libros
 
@@ -60,10 +76,10 @@ la sesión. Ejemplo ilustrativo (ajusta las carpetas antes de usarlo):
 ```json
 {
   "books": {
-    "terrario": "../..",
-    "la-nico": "../../../la-nico",
-    "descenso": "../../../descenso-al-olvido",
-    "convergencia": "../../../la-convergencia"
+    "terrario": "../terrario",
+    "la-nico": "../la-nico",
+    "descenso": "../descenso-al-olvido",
+    "convergencia": "../la-convergencia"
   }
 }
 ```
@@ -72,7 +88,10 @@ El servidor valida que cada ruta tenga `01-Manuscrito/`. No registra otras
 carpetas del disco automáticamente. Si modificas el registro, reinicia/reconecta
 el servidor. Puedes mantener un registro privado fuera del repo y pasar
 `--library /ruta/biblioteca.json`. Usa `--database /ruta/cache.sqlite3` para colocar
-el índice donde prefieras; por defecto está en el primer vault registrado.
+el índice donde prefieras; por defecto vive en `.editorial-cache/` junto al
+registro, independientemente del primer libro y del directorio del cliente.
+Sin `--library`, los comandos ad hoc usan `.editorial-cache/` en su directorio
+de ejecución. Los pesos se guardan junto a la BD, salvo `--model-cache` explícito.
 
 No es necesario copiar el servidor a cada libro: desde otro proyecto, apunta su
 configuración MCP a este mismo módulo y al mismo registro usando rutas absolutas
@@ -82,7 +101,7 @@ global del cliente salvo que quieras cargar este MCP en todos los proyectos.
 También puedes registrar raíces directamente:
 
 ```sh
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --book terrario=. --book la-nico=/ruta/al/vault --semantic serve
+uv run --locked --extra semantic editorial-mcp --book terrario=../terrario --book la-nico=/ruta/al/vault --semantic serve
 ```
 
 La CLI elige el primer libro si omites `--book-id`; el MCP exige siempre un ID.
@@ -170,17 +189,17 @@ El registro regional no se infiere; si no hay prohibición explícita de voseo,
 el detector no impone tuteo. No corrige nada ni evalúa calidad literaria.
 
 ```sh
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json lint 4 --book-id terrario --format markdown
-uv run --locked --extra semantic --project harness/editorial-mcp python harness/editorial-mcp/scripts/build-opencode-agents.py .
-uv run --locked --extra semantic --project harness/editorial-mcp python harness/editorial-mcp/scripts/build-opencode-agents.py . --check
+uv run --locked --extra semantic editorial-mcp --library books.json lint 4 --book-id terrario --format markdown
+uv run --locked --extra semantic python scripts/build-opencode-agents.py ../terrario
+uv run --locked --extra semantic python scripts/build-opencode-agents.py ../terrario --check
 ```
 
 ## Verificación
 
 ```sh
-uv run --locked --extra semantic --project harness/editorial-mcp pytest harness/editorial-mcp/tests
-uv run --locked --extra semantic --project harness/editorial-mcp ruff check harness/editorial-mcp
-uv run --locked --extra semantic --project harness/editorial-mcp ruff format --check harness/editorial-mcp
+uv run --locked --extra semantic pytest
+uv run --locked --extra semantic ruff check .
+uv run --locked --extra semantic ruff format --check .
 ```
 
 Las pruebas usan vaults temporales e incluyen aislamiento por ID, hashes,
@@ -210,16 +229,30 @@ restaurar una versión; son datos privados derivados, no resultados consultables
 Los pesos y vectores viven bajo `.editorial-cache/`, fuera de Git.
 
 ```sh
-uv run --locked --extra semantic --project harness/editorial-mcp editorial-mcp --library harness/editorial-mcp/books.json --semantic search "qué amenaza evita tocar a los muertos" --mode hybrid --book-id terrario
+uv run --locked --extra semantic editorial-mcp --library books.json --semantic search "qué amenaza evita tocar a los muertos" --mode hybrid --book-id terrario
 ```
 
 `--model-cache /ruta/cache` permite compartir el checkpoint con índices de prueba.
 Pruebas técnicas sin descarga automática:
 
 ```sh
-uv run --locked --extra semantic --project harness/editorial-mcp pytest harness/editorial-mcp/tests
-EDITORIAL_MODEL_CACHE="$PWD/.editorial-cache/models" uv run --locked --extra semantic --project harness/editorial-mcp pytest harness/editorial-mcp/tests/test_real_semantic.py
+uv run --locked --extra semantic pytest
+EDITORIAL_MODEL_CACHE="$PWD/.editorial-cache/models" uv run --locked --extra semantic pytest tests/test_real_semantic.py
 ```
+
+## Cómo se consulta `02-Revision/`
+
+Los Markdown de revisión siguen siendo la fuente de verdad del libro. `documents`
+guarda archivo/metadatos/hash y `chunks` conserva encabezado, líneas y `resolved`
+extraído de checkboxes. FTS5 y los vectores permiten recuperar solo lo pertinente.
+`chapter_context` devuelve pendientes del capítulo, no todo el archivo. Los
+resueltos se consultan explícitamente con `include_resolved=true`.
+
+Comprobar hashes y leer archivos en el indexador es I/O local, no tokens del
+modelo. Solo el contenido que el harness entrega al modelo consume su contexto.
+Esta BD no es un gestor independiente de tickets ni almacena transiciones
+permanentes por issue: el historial durable sigue en Git del libro. Los IDs de
+fragmento pertenecen a una versión, no son IDs permanentes de issues.
 
 ## Validación editorial pendiente
 
