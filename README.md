@@ -118,6 +118,7 @@ datos del índice en la próxima sincronización; nunca borra sus archivos.
 | `search(book, query, ...)` | Extractos con ruta, líneas, tipo de fuente y hash |
 | `read_scene(book, scene_id, expected_hash, ...)` | Texto original acotado, con paginación y vecinos opcionales |
 | `entity_evidence(book, entity, ...)` | Menciones literales, no hechos ni cronología inferida |
+| `entity_graph(book, entity, ...)` | Mapa relacional de la biblia: ficha, vínculos, declarados y co-mencionados |
 | `lint_chapter(book, chapter, ...)` | Detector mecánico parcial sin LLM |
 
 Los nombres visibles dependen del cliente: OpenCode agrupa bajo `editorial`
@@ -153,6 +154,27 @@ Los nombres visibles dependen del cliente: OpenCode agrupa bajo `editorial`
 - Cero coincidencias no demuestra que una escena falte. Para continuidad global,
   arcos o ausencia narrativa, combina consultas y recorridos exhaustivos con
   lectura directa cuando sea necesario. Prosa/ritmo requieren capítulo completo.
+
+### Mapa relacional de la biblia
+
+`entity_graph(book, entity)` devuelve, para una entidad con ficha en
+`00-Biblia/{Personajes,Lugares}/` o declarada en el frontmatter de algún
+capítulo: su ficha y metadatos, las relaciones `[[...]]` salientes y entrantes,
+los capítulos que la declaran, los que la mencionan **sin** declararla
+(candidatos a incoherencia de continuidad) y las demás entidades co-mencionadas
+en los mismos fragmentos. Detrás hay tres tablas derivadas en
+`.editorial-cache/`: `entities` (una fila por ficha), `entity_mentions`
+(fragmento → entidad, con origen `frontmatter` o `mention`) y `entity_relations`
+(wikilinks entre fichas). Se recrean durante el `sync` y son idénticas para
+cualquier libro que use el esquema `init-libro`; un libro sin esas carpetas solo
+devuelve `found=false`, sin romper el resto.
+
+Las menciones se detectan por nombre literal plegado de tildes con límites de
+palabra; los alias solo cuentan si están documentados como wikilink o nombre y
+una entidad sin ficha (solo declarada en frontmatter, p. ej. «Gómez») aparece
+con `ficha=false`. La co-mención no prueba hechos, causalidad ni ausencia:
+es referencia determinista para localizar, contrastar y decidir si un capítulo
+debe declarar a un personaje.
 
 ### Fidelidad y actualización
 

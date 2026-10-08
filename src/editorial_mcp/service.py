@@ -5,6 +5,7 @@ import re
 import unicodedata
 from hashlib import sha256
 
+from .entities import fold
 from .index import BookIndex
 from .lint import lint_text
 from .parsing import links
@@ -503,4 +504,177 @@ class EditorialService:
             "total_findings": len(findings),
             "has_more": stop < len(findings),
             "next_offset": stop if stop < len(findings) else None,
+        }
+
+    def entity_graph(self, book: str, entity: str, limit: int = 5, offset: int = 0) -> dict:
+        bounded(limit, 1, 20, "limit")
+        bounded(offset, 0, 1_000_000, "offset")
+        if not entity.strip() or len(entity) > 120:
+            raise ValueError("entity debe tener entre 1 y 120 caracteres no vacíos")
+        self.check_book(book)
+        self.index.sync()
+        folded = fold(entity)
+        empty = {
+            "book": book,
+            "entity": entity,
+            "kind": None,
+            "found": False,
+            "ficha": None,
+            "declared": [],
+            "untagged": [],
+            "co_mentioned": [],
+            "relations": {"out": [], "in": []},
+            "mentions": [],
+            "total_references": 0,
+            "has_more": False,
+            "next_offset": None,
+            "notice": "No está en la biblia ni en el frontmatter de ningún capítulo. "
+            "Para menciones literales libres (p. ej. un alias), usa entity_evidence.",
+        }
+        with self.index.connect() as db:
+            ficha = db.execute(
+                "SELECT * FROM entities WHERE book=? AND name_fold=? ORDER BY kind LIMIT 1",
+                (book, folded),
+            ).fetchone()
+            declared_name = None
+            if ficha is None:
+                row = db.execute(
+                    "SELECT DISTINCT name, kind FROM entity_mentions"
+                    " WHERE book=? AND name_fold=? LIMIT 1",
+                    (book, folded),
+                ).fetchone()
+                if row is None:
+                    return empty
+                declared_name = row["name"]
+                kind = row["kind"]
+            else:
+                declared_name = ficha["name"]
+                kind = ficha["kind"]
+            rows = db.execute(
+                """SELECT c.book, c.path, c.scene, c.part, c.heading,
+                          c.line_start, c.line_end, m.source,
+                          d.kind, d.chapter, d.hash
+                   FROM entity_mentions m
+                   JOIN chunks c ON c.id = m.chunk_id
+                   JOIN documents d ON d.book = c.book AND d.path = c.path
+                   WHERE m.book=? AND m.name_fold=?
+                   ORDER BY c.path, c.scene, c.part, m.source
+                   LIMIT ? OFFSET ?""",
+                (book, folded, limit, offset),
+            ).fetchall()
+            total = db.execute(
+                "SELECT count(*) FROM entity_mentions WHERE book=? AND name_fold=?",
+                (book, folded),
+            ).fetchone()[0]
+            by_doc = db.execute(
+                """SELECT d.path, d.chapter, d.title,
+                          sum(m.source='frontmatter') AS fm,
+                          sum(m.source='mention') AS mn,
+                          count(*) AS chunks
+                   FROM entity_mentions m
+                   JOIN chunks c ON c.id = m.chunk_id
+                   JOIN documents d ON d.book = c.book AND d.path = c.path
+                   WHERE m.book=? AND m.name_fold=?
+                   GROUP BY d.path, d.chapter, d.title
+                   ORDER BY d.path""",
+                (book, folded),
+            ).fetchall()
+            co_mentioned = [
+                {
+                    "name": row["name"],
+                    "kind": row["kind"],
+                    "ficha": bool(row["has_ficha"]),
+                    "chunks": row["chunks"],
+                }
+                for row in db.execute(
+                    """SELECT m2.name, m2.kind,
+                              (e.path IS NOT NULL) AS has_ficha,
+                              count(DISTINCT m2.chunk_id) AS chunks
+                       FROM entity_mentions m2
+                       LEFT JOIN entities e
+                         ON e.book = m2.book AND e.name_fold = m2.name_fold AND e.kind = m2.kind
+                       WHERE m2.book=? AND m2.name_fold<>?
+                         AND m2.source='mention'
+                         AND m2.chunk_id IN (
+                             SELECT chunk_id FROM entity_mentions
+                             WHERE book=? AND name_fold=? AND source='mention')
+                       GROUP BY m2.name, m2.kind
+                       ORDER BY chunks DESC, m2.name
+                       LIMIT 15""",
+                    (book, folded, book, folded),
+                ).fetchall()
+            ]
+            rel_out: list[dict] = []
+            rel_in: list[dict] = []
+            if ficha is not None:
+                rel_out = [
+                    {"target": row["target"], "kind": row["target_kind"]}
+                    for row in db.execute(
+                        "SELECT target, target_kind FROM entity_relations"
+                        " WHERE book=? AND source_path=? ORDER BY target",
+                        (book, ficha["path"]),
+                    ).fetchall()
+                ]
+                rel_in = [
+                    {
+                        "path": row["source_path"],
+                        "name": row["source_name"],
+                        "kind": row["source_kind"],
+                    }
+                    for row in db.execute(
+                        """SELECT r.source_path, e.name AS source_name, e.kind AS source_kind
+                           FROM entity_relations r
+                           JOIN entities e ON e.book = r.book AND e.path = r.source_path
+                           WHERE r.book=? AND r.target_fold=?
+                           ORDER BY e.name""",
+                        (book, folded),
+                    ).fetchall()
+                ]
+        declared = [
+            {
+                "path": row["path"],
+                "chapter": row["chapter"],
+                "title": row["title"],
+                "chunks": row["chunks"],
+            }
+            for row in by_doc
+            if row["fm"] > 0
+        ]
+        untagged = [
+            {
+                "path": row["path"],
+                "chapter": row["chapter"],
+                "title": row["title"],
+                "chunks": row["chunks"],
+            }
+            for row in by_doc
+            if row["fm"] == 0 and row["mn"] > 0
+        ]
+        mentions = [{**reference(row), "source": row["source"]} for row in rows]
+        next_offset = offset + len(rows)
+        return {
+            "book": book,
+            "entity": declared_name,
+            "kind": kind,
+            "found": True,
+            "ficha": (
+                {
+                    "path": ficha["path"],
+                    "source_hash": ficha["hash"],
+                    "kind": ficha["kind"],
+                    "metadata": json.loads(ficha["metadata"]),
+                }
+                if ficha is not None
+                else None
+            ),
+            "declared": declared,
+            "untagged": untagged,
+            "co_mentioned": co_mentioned,
+            "relations": {"out": rel_out, "in": rel_in},
+            "mentions": mentions,
+            "total_references": total,
+            "has_more": next_offset < total,
+            "next_offset": next_offset if next_offset < total else None,
+            "notice": "Referencia derivada y determinista: co-mención y frontmatter, "
+            "no hechos, causalidad ni ausencia narrativa.",
         }

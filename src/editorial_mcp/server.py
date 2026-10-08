@@ -102,6 +102,18 @@ def create_server(service: EditorialService) -> FastMCP:
         )
 
     @server.tool(annotations=readonly)
+    def entity_graph(
+        book: str,
+        entity: str,
+        limit: int = 5,
+        offset: int = 0,
+    ) -> dict[str, object]:
+        """Mapa entidad→biblia: ficha, relaciones, capítulos que la declaran y
+        menciones, con co-mencionados y capítulos sin declarar (candidatos a
+        incoherencia). Solo referencia derivada; alias libres van a entity_evidence."""
+        return service.entity_graph(book, entity, limit, offset)
+
+    @server.tool(annotations=readonly)
     def lint_chapter(
         book: str, chapter: str, limit: int = 30, offset: int = 0
     ) -> dict[str, object]:

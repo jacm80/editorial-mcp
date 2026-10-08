@@ -34,6 +34,7 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                     "read_scene",
                     "chapter_context",
                     "entity_evidence",
+                    "entity_graph",
                     "lint_chapter",
                 }
                 assert all(tool.annotations.readOnlyHint for tool in tools)
@@ -61,6 +62,9 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                     "entity_evidence", {"book": "dos", "entity": "Martha"}
                 )
                 assert evidence.structuredContent["total_matching_chunks"] == 1
+                graph = await client.call_tool("entity_graph", {"book": "uno", "entity": "Martha"})
+                assert graph.structuredContent["found"]
+                assert graph.structuredContent["kind"] == "personaje"
                 lint = await client.call_tool("lint_chapter", {"book": "uno", "chapter": "4"})
                 assert lint.structuredContent["total_findings"] == 0
                 invalid = await client.call_tool("search", {"book": "missing", "query": "Martha"})

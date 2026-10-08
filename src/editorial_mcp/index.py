@@ -6,9 +6,14 @@ from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 
+from .entities import DDL as ENTITY_DDL
+from .entities import rebuild as rebuild_entities
 from .parsing import frontmatter, segments
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# La v1 no tenía la capa relacional (entities/mentions/relations); se acepta
+# para migrar en sitio con un rebuild completo de entidades en el próximo sync.
+MIGRATABLE_VERSIONS = {0, 1, SCHEMA_VERSION}
 SOURCE_DIRS = {"01-Manuscrito": "manuscrito", "00-Biblia": "biblia", "02-Revision": "revision"}
 
 
@@ -30,9 +35,10 @@ class BookIndex:
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in {0, SCHEMA_VERSION}:
+            if version not in MIGRATABLE_VERSIONS:
                 raise ValueError("Versión de índice incompatible; usa otra base regenerable")
-            db.executescript("""
+            db.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS documents (
                     book TEXT NOT NULL, path TEXT NOT NULL, root TEXT NOT NULL,
                     kind TEXT NOT NULL, title TEXT NOT NULL, chapter TEXT,
@@ -60,8 +66,11 @@ class BookIndex:
                     INSERT INTO chunks_fts(chunks_fts, rowid, text)
                     VALUES ('delete', old.id, old.text);
                 END;
-            """)
+            """
+                + ENTITY_DDL
+            )
             db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self._stale_entities = version == 1
 
     @contextmanager
     def connect(self):
@@ -98,6 +107,7 @@ class BookIndex:
             }
             counts = dict(db.execute("SELECT kind, count(*) FROM documents GROUP BY kind"))
             chunks = db.execute("SELECT count(*) FROM chunks").fetchone()[0]
+            entities = db.execute("SELECT count(*) FROM entities").fetchone()[0]
         added = sorted(set(current) - set(indexed))
         removed = sorted(set(indexed) - set(current))
         changed = sorted(
@@ -110,6 +120,7 @@ class BookIndex:
             "books": list(self.books),
             "documents": counts,
             "chunks": chunks,
+            "entities": entities,
             "pending": {"added": len(added), "changed": len(changed), "removed": len(removed)},
             "schema_version": SCHEMA_VERSION,
             "retrieval": "lexical; no embeddings",
@@ -118,6 +129,7 @@ class BookIndex:
     def sync(self) -> dict:
         current = self.sources()
         updated = removed = unchanged = 0
+        rebuilt_books: set[str] = set()
         with self.connect() as db:
             indexed = {
                 (r["book"], r["path"]): (r["hash"], r["root"])
@@ -126,6 +138,7 @@ class BookIndex:
             for key in set(indexed) - set(current):
                 db.execute("DELETE FROM documents WHERE book=? AND path=?", key)
                 removed += 1
+                rebuilt_books.add(key[0])
             for (book, path), (kind, digest, text) in current.items():
                 if indexed.get((book, path)) == (digest, str(self.books[book])):
                     unchanged += 1
@@ -177,6 +190,12 @@ class BookIndex:
                     ],
                 )
                 updated += 1
+                rebuilt_books.add(book)
+            if self._stale_entities:
+                rebuilt_books.update(self.books)
+            for book in sorted(rebuilt_books):
+                rebuild_entities(db, book)
+            self._stale_entities = False
         return {"updated": updated, "removed": removed, "unchanged": unchanged}
 
     def source(self, book: str, path: str, digest: str) -> str:
