@@ -678,3 +678,78 @@ class EditorialService:
             "notice": "Referencia derivada y determinista: co-mención y frontmatter, "
             "no hechos, causalidad ni ausencia narrativa.",
         }
+
+    def book_overview(self, book: str) -> dict:
+        """Tablero del libro: capítulos, fichas, issues y frescura, sin prosa."""
+        self.check_book(book)
+        self.index.sync()
+        with self.index.connect() as db:
+            chapter_rows = db.execute(
+                "SELECT path, title, metadata FROM documents WHERE book=? AND kind='manuscrito'",
+                (book,),
+            ).fetchall()
+            entity_rows = db.execute(
+                "SELECT path, name, kind, metadata FROM entities WHERE book=? ORDER BY kind, name",
+                (book,),
+            ).fetchall()
+            issue_rows = db.execute(
+                """SELECT c.path, c.line_start, c.heading, c.text, c.resolved
+                FROM chunks c JOIN documents d ON d.book=c.book AND d.path=c.path
+                WHERE c.book=? AND d.kind='revision' AND c.resolved IS NOT NULL
+                ORDER BY c.path, c.scene, c.part""",
+                (book,),
+            ).fetchall()
+        chapters = [
+            {"path": row["path"], "title": row["title"], "frontmatter": json.loads(row["metadata"])}
+            for row in chapter_rows
+        ]
+
+        def chapter_key(item):
+            try:
+                return (0, float(str(item["frontmatter"].get("capitulo"))), item["path"])
+            except (TypeError, ValueError):
+                return (1, 0.0, item["path"])
+
+        chapters.sort(key=chapter_key)
+        entities = [
+            {
+                "path": row["path"],
+                "name": row["name"],
+                "kind": row["kind"],
+                "frontmatter": json.loads(row["metadata"]),
+            }
+            for row in entity_rows
+        ]
+        files: dict[str, dict[str, int]] = {}
+        for row in issue_rows:
+            counts = files.setdefault(row["path"], {"open": 0, "resolved": 0})
+            counts["open" if row["resolved"] == 0 else "resolved"] += 1
+        open_rows = [row for row in issue_rows if row["resolved"] == 0]
+        open_items = [
+            {
+                "path": row["path"],
+                "line_start": row["line_start"],
+                "heading": row["heading"],
+                "excerpt": row["text"][:400].strip(),
+                "truncated": len(row["text"]) > 400,
+            }
+            for row in open_rows[:60]
+        ]
+        return {
+            "book": book,
+            "chapters": chapters[:200],
+            "chapters_omitted": max(0, len(chapters) - 200),
+            "entities": entities[:400],
+            "entities_omitted": max(0, len(entities) - 400),
+            "issues": {
+                "open": len(open_rows),
+                "resolved": len(issue_rows) - len(open_rows),
+                "files": [{"path": path, **counts} for path, counts in files.items()],
+                "open_items": open_items,
+                "open_omitted": max(0, len(open_rows) - 60),
+            },
+            "index": self.status(),
+            "notice": "Tablero derivado de frontmatter y checkboxes; sincroniza antes de "
+            "responder, así que refleja los archivos actuales. Los issues son decisiones "
+            "registradas por el autor, no hechos de la prosa.",
+        }

@@ -114,6 +114,7 @@ datos del índice en la próxima sincronización; nunca borra sus archivos.
 | Herramienta | Uso |
 |---|---|
 | `index_status()` | IDs, cantidades y frescura, sin texto ni sincronización forzada |
+| `book_overview(book)` | Tablero del libro: capítulos, fichas, issues abiertos e índice, sin prosa |
 | `chapter_context(book, chapter)` | Metadatos, escenas, candidatos de biblia e issues activos |
 | `search(book, query, ...)` | Extractos con ruta, líneas, tipo de fuente y hash |
 | `read_scene(book, scene_id, expected_hash, ...)` | Texto original acotado, con paginación y vecinos opcionales |
@@ -175,6 +176,18 @@ una entidad sin ficha (solo declarada en frontmatter, p. ej. «Gómez») aparece
 con `ficha=false`. La co-mención no prueba hechos, causalidad ni ausencia:
 es referencia determinista para localizar, contrastar y decidir si un capítulo
 debe declarar a un personaje.
+
+### Tablero del libro
+
+`book_overview(book)` devuelve el tablero completo sin prosa: los capítulos
+ordenados por `capitulo` con todo su frontmatter (parte, pov, estado, palabras,
+personajes…), las fichas de `00-Biblia/{Personajes,Lugares}/`, los issues de
+`02-Revision/` con abiertos/resueltos por archivo y un extracto de cada abierto,
+y la frescura del índice. Sincroniza antes de responder, por lo que siempre
+refleja los archivos actuales: es la misma fuente que consulta Dataview en
+Obsidian, así que ambas vistas no pueden desincronizarse. Las listas van
+acotadas (200 capítulos, 400 fichas, 60 issues visibles) con contadores
+`*_omitted`. Los campos vienen tal cual del frontmatter, sin interpretación.
 
 ### Fidelidad y actualización
 

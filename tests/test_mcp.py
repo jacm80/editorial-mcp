@@ -30,6 +30,7 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                 tools = (await client.list_tools()).tools
                 assert {tool.name for tool in tools} == {
                     "index_status",
+                    "book_overview",
                     "search",
                     "read_scene",
                     "chapter_context",
@@ -44,6 +45,9 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                 status = await client.call_tool("index_status", {})
                 assert status.structuredContent["fresh"]
                 assert status.structuredContent["books"] == ["uno", "dos"]
+                overview = await client.call_tool("book_overview", {"book": "uno"})
+                assert overview.structuredContent["issues"]["open"] == 2
+                assert overview.structuredContent["index"]["fresh"]
                 result = await client.call_tool("search", {"book": "uno", "query": "dos mil"})
                 assert not result.isError
                 hit = result.structuredContent["results"][0]

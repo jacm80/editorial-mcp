@@ -28,6 +28,15 @@ def create_server(service: EditorialService) -> FastMCP:
         return service.status()
 
     @server.tool(annotations=readonly)
+    def book_overview(book: str) -> dict[str, object]:
+        """Tablero del libro: capítulos, fichas de la biblia, issues e índice.
+
+        Solo metadatos de frontmatter y checkboxes, sin prosa. Sincroniza el
+        índice antes de responder; equivalente al tablero de Dataview del vault.
+        """
+        return service.book_overview(book)
+
+    @server.tool(annotations=readonly)
     def search(
         book: str,
         query: str,
