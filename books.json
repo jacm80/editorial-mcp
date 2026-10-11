@@ -1,6 +1,7 @@
 {
   "books": {
     "terrario": "../terrario",
-    "la-nico": "../la-nico"
+    "la-nico": "../la-nico",
+    "convergencia": "../convergencia"
   }
 }
