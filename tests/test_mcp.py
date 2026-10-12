@@ -37,8 +37,28 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                     "entity_evidence",
                     "entity_graph",
                     "lint_chapter",
+                    "remember",
+                    "recall",
+                    "session_context",
+                    "session_summary",
                 }
-                assert all(tool.annotations.readOnlyHint for tool in tools)
+                readonly = {
+                    tool.name
+                    for tool in tools
+                    if tool.annotations and tool.annotations.readOnlyHint
+                }
+                assert readonly == {
+                    "index_status",
+                    "book_overview",
+                    "search",
+                    "read_scene",
+                    "chapter_context",
+                    "entity_evidence",
+                    "entity_graph",
+                    "lint_chapter",
+                    "recall",
+                    "session_context",
+                }
                 for tool in tools:
                     if tool.name != "index_status":
                         assert "book" in tool.inputSchema["required"]

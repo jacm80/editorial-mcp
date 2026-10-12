@@ -2,6 +2,8 @@
 
 Aplicación independiente de los vaults de libros. Mantén el protocolo MCP por
 stdio y las herramientas de consulta de solo lectura respecto de las fuentes.
+La única escritura permitida es la memoria de sesión (SQLite local en
+`.editorial-cache/`).
 Los libros se registran por ID en `books.json`; no copies manuscritos al código.
 La BD, los vectores y los pesos son datos privados regenerables en
 `.editorial-cache/`, junto al registro, y nunca se incluyen en Git.

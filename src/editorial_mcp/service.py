@@ -8,6 +8,7 @@ from hashlib import sha256
 from .entities import fold
 from .index import BookIndex
 from .lint import lint_text
+from .memory import MemoryStore
 from .parsing import links
 from .semantic import Embedder, SemanticIndex, fuse
 
@@ -131,9 +132,20 @@ def excerpt(text: str, position: int, size: int) -> tuple[str, dict]:
 
 
 class EditorialService:
-    def __init__(self, index: BookIndex, embedder: Embedder | None = None):
+    def __init__(
+        self,
+        index: BookIndex,
+        embedder: Embedder | None = None,
+        memory: MemoryStore | None = None,
+    ):
         self.index = index
         self.semantic = SemanticIndex(index, embedder) if embedder is not None else None
+        self.memory = memory
+
+    def require_memory(self) -> MemoryStore:
+        if self.memory is None:
+            raise ValueError("Memoria de sesión desactivada en este servidor")
+        return self.memory
 
     def status(self) -> dict:
         return {
@@ -678,6 +690,51 @@ class EditorialService:
             "notice": "Referencia derivada y determinista: co-mención y frontmatter, "
             "no hechos, causalidad ni ausencia narrativa.",
         }
+
+    def remember(
+        self,
+        book: str,
+        title: str,
+        content: str,
+        type: str = "other",
+        topic_key: str | None = None,
+    ) -> dict:
+        """Guarda una decisión, descubrimiento o nota de sesión para el libro."""
+        self.check_book(book)
+        return self.require_memory().remember(book, title, content, type, topic_key)
+
+    def recall(self, book: str, query: str, limit: int = 5, type: str | None = None) -> dict:
+        """Recupera memorias del libro por palabras (título y contenido)."""
+        bounded(limit, 1, 20, "limit")
+        if not query.strip() or len(query) > 200:
+            raise ValueError("query debe tener entre 1 y 200 caracteres no vacíos")
+        self.check_book(book)
+        return {
+            "book": book,
+            "results": self.require_memory().recall(book, query, limit, type),
+            "notice": "Memorias de sesiones previas, no hechos del manuscrito.",
+        }
+
+    def session_context(self, book: str, limit: int = 5) -> dict:
+        """Último resumen de sesión más memorias recientes del libro."""
+        bounded(limit, 1, 20, "limit")
+        self.check_book(book)
+        return self.require_memory().session_context(book, limit)
+
+    def session_summary(
+        self,
+        book: str,
+        goal: str,
+        accomplished: str,
+        discoveries: str,
+        next_steps: str,
+        files: str = "",
+    ) -> dict:
+        """Guarda el resumen de cierre de sesión del libro (un topic por día)."""
+        self.check_book(book)
+        return self.require_memory().session_summary(
+            book, goal, accomplished, discoveries, next_steps, files
+        )
 
     def book_overview(self, book: str) -> dict:
         """Tablero del libro: capítulos, fichas, issues y frescura, sin prosa."""

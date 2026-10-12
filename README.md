@@ -209,8 +209,8 @@ Cada resultado lleva SHA-256 de su fuente. `read_scene` comprueba ese hash contr
 el archivo actual y rechaza versiones anteriores. Los IDs son posiciones de
 escena en **esa versión**; no sobreviven como identidad estable a inserciones o
 reordenamientos. Si el archivo cambia, busca otra vez. Para aplicar un diff sigue
-verificando el texto actual y pidiendo aprobación: el MCP no tiene herramientas
-de escritura y no reemplaza el control editorial.
+verificando el texto actual y pidiendo aprobación: el MCP solo escribe memoria
+de sesión y no reemplaza el control editorial.
 
 ## Linter y agentes existentes
 

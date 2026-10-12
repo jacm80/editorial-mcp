@@ -1,4 +1,4 @@
-"""Adaptador MCP estándar sobre el servicio; no expone herramientas de escritura."""
+"""Adaptador MCP estándar sobre el servicio; escritura solo en memoria de sesión."""
 
 from typing import Literal
 
@@ -132,5 +132,42 @@ def create_server(service: EditorialService) -> FastMCP:
         Es parcial, puede dar falsos positivos y no reemplaza al copyeditor.
         """
         return service.lint_chapter(book, chapter, limit, offset)
+
+    @server.tool()
+    def remember(
+        book: str,
+        title: str,
+        content: str,
+        type: str = "other",
+        topic_key: str | None = None,
+    ) -> dict[str, object]:
+        """Guarda una decisión, descubrimiento o nota de sesión para el libro.
+
+        type: decision, discovery, convention, preference, session_summary u other.
+        topic_key agrupa (mismo libro+clave = actualiza); sin clave, crea una nota nueva.
+        """
+        return service.remember(book, title, content, type, topic_key)
+
+    @server.tool(annotations=readonly)
+    def recall(book: str, query: str, limit: int = 5, type: str | None = None) -> dict[str, object]:
+        """Recupera memorias del libro por palabras (título y contenido)."""
+        return service.recall(book, query, limit, type)
+
+    @server.tool(annotations=readonly)
+    def session_context(book: str, limit: int = 5) -> dict[str, object]:
+        """Último resumen de sesión más memorias recientes del libro."""
+        return service.session_context(book, limit)
+
+    @server.tool()
+    def session_summary(
+        book: str,
+        goal: str,
+        accomplished: str,
+        discoveries: str,
+        next_steps: str,
+        files: str = "",
+    ) -> dict[str, object]:
+        """Guarda el resumen de cierre de sesión del libro (un topic por día)."""
+        return service.session_summary(book, goal, accomplished, discoveries, next_steps, files)
 
     return server

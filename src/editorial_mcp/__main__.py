@@ -5,11 +5,14 @@ import sys
 from pathlib import Path
 
 from .index import BookIndex
+from .memory import MemoryStore
 from .service import EditorialService
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MCP editorial local de solo lectura")
+    parser = argparse.ArgumentParser(
+        description="MCP editorial local; escritura solo en memoria de sesión"
+    )
     parser.add_argument(
         "--book",
         action="append",
@@ -79,6 +82,7 @@ def main() -> None:
         cache_root = args.library.expanduser().resolve().parent if args.library else Path.cwd()
         database = args.database or cache_root / ".editorial-cache/index.sqlite3"
         index = BookIndex(books, database)
+        memory = MemoryStore(cache_root / ".editorial-cache/memory.sqlite3")
         from .semantic import LocalEmbedder
 
         embedder = (
@@ -86,7 +90,7 @@ def main() -> None:
             if args.semantic
             else None
         )
-        service = EditorialService(index, embedder)
+        service = EditorialService(index, embedder, memory)
         book = getattr(args, "book_id", None) or next(iter(books))
         if args.command == "serve":
             from .server import create_server
