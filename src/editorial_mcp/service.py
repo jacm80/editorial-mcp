@@ -1,9 +1,13 @@
 """Consultas acotadas con procedencia explícita y paginación."""
 
 import json
+import os
 import re
+import subprocess
+import tempfile
 import unicodedata
 from hashlib import sha256
+from pathlib import Path
 
 from .entities import fold
 from .index import BookIndex
@@ -735,6 +739,79 @@ class EditorialService:
         return self.require_memory().session_summary(
             book, goal, accomplished, discoveries, next_steps, files
         )
+
+    def close_session(
+        self,
+        book: str,
+        goal: str,
+        accomplished: str,
+        discoveries: str,
+        next_steps: str,
+        files: str = "",
+        message: str | None = None,
+    ) -> dict:
+        """Cierre automatizado: guarda session_summary y corre scripts/cierre.sh.
+
+        Solo ejecuta `<repo del libro>/scripts/cierre.sh` (allowlist: el libro
+        debe estar en el registro y el script debe existir dentro del repo y
+        ser ejecutable). Timeout 300s; captura stdout/stderr.
+        """
+        self.check_book(book)
+        memory = self.session_summary(book, goal, accomplished, discoveries, next_steps, files)
+        bookdir = Path(self.index.books[book]).resolve()
+        script = (bookdir / "scripts" / "cierre.sh").resolve()
+        if script.parent != bookdir / "scripts" or not script.is_file():
+            raise ValueError(f"{book}: sin scripts/cierre.sh en el repo del libro")
+        if not os.access(script, os.X_OK):
+            raise ValueError(f"{book}: scripts/cierre.sh no es ejecutable")
+        payload = {
+            "goal": goal,
+            "accomplished": accomplished,
+            "discoveries": discoveries,
+            "next_steps": next_steps,
+            "files": files,
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", prefix="cierre-", delete=False, encoding="utf-8"
+        ) as tmp:
+            json.dump(payload, tmp, ensure_ascii=False)
+            summary_path = tmp.name
+        try:
+            command = [
+                os.fspath(script),
+                "--book",
+                os.fspath(bookdir),
+                "--summary",
+                summary_path,
+            ]
+            if message:
+                command += ["--message", message]
+            try:
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                    cwd=bookdir,
+                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                )
+            except subprocess.TimeoutExpired as error:
+                raise ValueError(f"{book}: cierre.sh excedió 300s") from error
+            if completed.returncode != 0:
+                tail = (completed.stderr.strip() or completed.stdout.strip())[-2000:]
+                raise ValueError(f"{book}: cierre.sh falló (rc={completed.returncode}): {tail}")
+            steps = [
+                line for line in completed.stdout.splitlines() if line.startswith(("OK ", "SKIP "))
+            ]
+            if not steps:
+                raise ValueError(f"{book}: cierre.sh no emitió recibos")
+            return {
+                "memory": {"status": memory["status"], "topic_key": memory["topic_key"]},
+                "steps": steps,
+            }
+        finally:
+            os.unlink(summary_path)
 
     def book_overview(self, book: str) -> dict:
         """Tablero del libro: capítulos, fichas, issues y frescura, sin prosa."""

@@ -41,6 +41,7 @@ def test_real_stdio_handshake_and_tools(library, tmp_path):
                     "recall",
                     "session_context",
                     "session_summary",
+                    "close_session",
                 }
                 readonly = {
                     tool.name

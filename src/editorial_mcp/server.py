@@ -170,4 +170,25 @@ def create_server(service: EditorialService) -> FastMCP:
         """Guarda el resumen de cierre de sesión del libro (un topic por día)."""
         return service.session_summary(book, goal, accomplished, discoveries, next_steps, files)
 
+    @server.tool()
+    def close_session(
+        book: str,
+        goal: str,
+        accomplished: str,
+        discoveries: str,
+        next_steps: str,
+        files: str = "",
+        message: str | None = None,
+    ) -> dict[str, object]:
+        """Cierre automatizado: guarda session_summary y corre scripts/cierre.sh.
+
+        Commit + push, reindexa, exige fresh:true con pending 0/0/0, regenera
+        .claude/INDEX.md y valida el frontmatter. Solo ejecuta el cierre.sh del
+        propio repo del libro (allowlist); message opcional para el commit.
+        Retorna {memory: {status, topic_key}, steps: [recibos]}.
+        """
+        return service.close_session(
+            book, goal, accomplished, discoveries, next_steps, files, message
+        )
+
     return server
